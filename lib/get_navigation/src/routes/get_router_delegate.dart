@@ -1,5 +1,6 @@
 import 'dart:async';
 
+import 'package:flutter/cupertino.dart';
 import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 
@@ -94,7 +95,7 @@ class GetDelegate extends RouterDelegate<RouteDecoder>
         notFoundRoute = notFoundRoute ??= GetPage(
           name: '/404',
           page: () => const Scaffold(
-            body: Center(child: Text('')),
+            body: Center(child: CupertinoActivityIndicator(color: Colors.grey)),
           ),
         ) {
     if (!showHashOnUrl && GetPlatform.isWeb) setUrlStrategy();
