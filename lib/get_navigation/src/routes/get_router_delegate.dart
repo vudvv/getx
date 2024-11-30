@@ -94,7 +94,7 @@ class GetDelegate extends RouterDelegate<RouteDecoder>
         notFoundRoute = notFoundRoute ??= GetPage(
           name: '/404',
           page: () => const Scaffold(
-            body: Center(child: Text('Route not found')),
+            body: Center(child: Text('')),
           ),
         ) {
     if (!showHashOnUrl && GetPlatform.isWeb) setUrlStrategy();
