@@ -10,10 +10,9 @@ void main() {
       Wrapper(child: Container()),
     );
 
-    await tester.pump();
-
     Get.defaultDialog(
-        onConfirm: () {}, middleText: "Dialog made in 3 lines of code");
+        onConfirm: () => debugPrint("Ok"),
+        middleText: "Dialog made in 3 lines of code");
 
     await tester.pumpAndSettle();
 
@@ -24,8 +23,6 @@ void main() {
     await tester.pumpWidget(
       Wrapper(child: Container()),
     );
-
-    await tester.pump();
 
     Get.dialog(const YourDialogWidget());
 
@@ -39,25 +36,16 @@ void main() {
       Wrapper(child: Container()),
     );
 
-    await tester.pump();
-
     Get.dialog(const YourDialogWidget());
+    expect(Get.isDialogOpen, true);
+    Get.back();
+    expect(Get.isDialogOpen, false);
     await tester.pumpAndSettle();
-
-    expect(find.byType(YourDialogWidget), findsOneWidget);
-    // expect(Get.isDialogOpen, true);
-
-    Get.backLegacy();
-    await tester.pumpAndSettle();
-
-    expect(find.byType(YourDialogWidget), findsNothing);
-    // expect(Get.isDialogOpen, false);
-    // await tester.pumpAndSettle();
   });
 }
 
 class YourDialogWidget extends StatelessWidget {
-  const YourDialogWidget({super.key});
+  const YourDialogWidget({Key? key}) : super(key: key);
 
   @override
   Widget build(BuildContext context) {

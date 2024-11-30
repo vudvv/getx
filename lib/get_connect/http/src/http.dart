@@ -7,17 +7,15 @@ import '../src/multipart/form_data.dart';
 import '../src/request/request.dart';
 import '../src/response/response.dart';
 import '../src/status/http_status.dart';
-import 'http/interface/request_base.dart';
-import 'http/request/http_request.dart';
+import '_http/_stub/_http_request_stub.dart'
+    if (dart.library.io) '_http/_io/_http_request_io.dart'
+    if (dart.library.html) '_http/_html/_http_request_html.dart' as platform;
+import '_http/interface/request_base.dart';
 import 'interceptors/get_modifiers.dart';
-import 'response/client_response.dart';
 
 typedef Decoder<T> = T Function(dynamic data);
 
 typedef Progress = Function(double percent);
-
-typedef ResponseInterceptor<T> = Future<Response<T>?> Function(
-    Request<T> request, Type targetType, HttpClientResponse response);
 
 class GetHttpClient {
   String userAgent;
@@ -30,16 +28,14 @@ class GetHttpClient {
   int maxAuthRetries;
 
   bool sendUserAgent;
-  bool sendContentLength;
 
   Decoder? defaultDecoder;
-  ResponseInterceptor? defaultResponseInterceptor;
 
   Duration timeout;
 
   bool errorSafety = true;
 
-  final IClient _httpClient;
+  final HttpRequestBase _httpClient;
 
   final GetModifier _modifier;
 
@@ -51,21 +47,18 @@ class GetHttpClient {
     this.followRedirects = true,
     this.maxRedirects = 5,
     this.sendUserAgent = false,
-    this.sendContentLength = true,
     this.maxAuthRetries = 1,
     bool allowAutoSignedCert = false,
     this.baseUrl,
     List<TrustedCertificate>? trustedCertificates,
     bool withCredentials = false,
     String Function(Uri url)? findProxy,
-    IClient? customClient,
-  })  : _httpClient = customClient ??
-            createHttp(
-              allowAutoSignedCert: allowAutoSignedCert,
-              trustedCertificates: trustedCertificates,
-              withCredentials: withCredentials,
-              findProxy: findProxy,
-            ),
+  })  : _httpClient = platform.HttpRequestImpl(
+          allowAutoSignedCert: allowAutoSignedCert,
+          trustedCertificates: trustedCertificates,
+          withCredentials: withCredentials,
+          findProxy: findProxy,
+        ),
         _modifier = GetModifier();
 
   void addAuthenticator<T>(RequestModifier<T> auth) {
@@ -88,7 +81,7 @@ class GetHttpClient {
     _modifier.removeResponseModifier<T>(interceptor);
   }
 
-  Uri createUri(String? url, Map<String, dynamic>? query) {
+  Uri _createUri(String? url, Map<String, dynamic>? query) {
     if (baseUrl != null) {
       url = baseUrl! + url!;
     }
@@ -106,7 +99,6 @@ class GetHttpClient {
     String method,
     Map<String, dynamic>? query,
     Decoder<T>? decoder,
-    ResponseInterceptor<T>? responseInterceptor,
     Progress? uploadProgress,
   ) async {
     List<int>? bodyBytes;
@@ -132,21 +124,21 @@ class GetHttpClient {
       });
       var formData = parts.join('&');
       bodyBytes = utf8.encode(formData);
-      _setContentLength(headers, bodyBytes.length);
+      headers['content-length'] = bodyBytes.length.toString();
       headers['content-type'] = contentType;
     } else if (body is Map || body is List) {
       var jsonString = json.encode(body);
+
       bodyBytes = utf8.encode(jsonString);
-      _setContentLength(headers, bodyBytes.length);
+      headers['content-length'] = bodyBytes.length.toString();
       headers['content-type'] = contentType ?? defaultContentType;
     } else if (body is String) {
       bodyBytes = utf8.encode(body);
-      _setContentLength(headers, bodyBytes.length);
-
+      headers['content-length'] = bodyBytes.length.toString();
       headers['content-type'] = contentType ?? defaultContentType;
     } else if (body == null) {
-      _setContentLength(headers, 0);
       headers['content-type'] = contentType ?? defaultContentType;
+      headers['content-length'] = '0';
     } else {
       if (!errorSafety) {
         throw UnexpectedFormat('body cannot be ${body.runtimeType}');
@@ -157,23 +149,17 @@ class GetHttpClient {
       bodyStream = _trackProgress(bodyBytes, uploadProgress);
     }
 
-    final uri = createUri(url, query);
+    final uri = _createUri(url, query);
     return Request<T>(
-        method: method,
-        url: uri,
-        headers: headers,
-        bodyBytes: bodyStream,
-        contentLength: bodyBytes?.length ?? 0,
-        followRedirects: followRedirects,
-        maxRedirects: maxRedirects,
-        decoder: decoder,
-        responseInterceptor: responseInterceptor);
-  }
-
-  void _setContentLength(Map<String, String> headers, int contentLength) {
-    if (sendContentLength) {
-      headers['content-length'] = '$contentLength';
-    }
+      method: method,
+      url: uri,
+      headers: headers,
+      bodyBytes: bodyStream,
+      contentLength: bodyBytes?.length ?? 0,
+      followRedirects: followRedirects,
+      maxRedirects: maxRedirects,
+      decoder: decoder,
+    );
   }
 
   Stream<List<int>> _trackProgress(
@@ -275,33 +261,20 @@ class GetHttpClient {
     String? contentType,
     Map<String, dynamic>? query,
     Decoder<T>? decoder,
-    ResponseInterceptor<T>? responseInterceptor,
   ) {
     final headers = <String, String>{};
     _setSimpleHeaders(headers, contentType);
-    final uri = createUri(url, query);
+    final uri = _createUri(url, query);
 
     return Future.value(Request<T>(
       method: 'get',
       url: uri,
       headers: headers,
       decoder: decoder ?? (defaultDecoder as Decoder<T>?),
-      responseInterceptor: _responseInterceptor(responseInterceptor),
       contentLength: 0,
       followRedirects: followRedirects,
       maxRedirects: maxRedirects,
     ));
-  }
-
-  ResponseInterceptor<T>? _responseInterceptor<T>(
-      ResponseInterceptor<T>? actual) {
-    if (actual != null) return actual;
-    final defaultInterceptor = defaultResponseInterceptor;
-    return defaultInterceptor != null
-        ? (request, targetType, response) async =>
-            await defaultInterceptor(request, targetType, response)
-                as Response<T>?
-        : null;
   }
 
   Future<Request<T>> _request<T>(
@@ -311,7 +284,6 @@ class GetHttpClient {
     required dynamic body,
     required Map<String, dynamic>? query,
     Decoder<T>? decoder,
-    ResponseInterceptor<T>? responseInterceptor,
     required Progress? uploadProgress,
   }) {
     return _requestWithBody<T>(
@@ -321,7 +293,6 @@ class GetHttpClient {
       method,
       query,
       decoder ?? (defaultDecoder as Decoder<T>?),
-      _responseInterceptor(responseInterceptor),
       uploadProgress,
     );
   }
@@ -331,33 +302,17 @@ class GetHttpClient {
     String? contentType,
     Map<String, dynamic>? query,
     Decoder<T>? decoder,
-    ResponseInterceptor<T>? responseInterceptor,
   ) {
     final headers = <String, String>{};
     _setSimpleHeaders(headers, contentType);
-    final uri = createUri(url, query);
+    final uri = _createUri(url, query);
 
     return Request<T>(
       method: 'delete',
       url: uri,
       headers: headers,
       decoder: decoder ?? (defaultDecoder as Decoder<T>?),
-      responseInterceptor: _responseInterceptor(responseInterceptor),
     );
-  }
-
-  Future<Response<T>> send<T>(Request<T> request) async {
-    try {
-      var response = await _performRequest<T>(() => Future.value(request));
-      return response;
-    } on Exception catch (e) {
-      if (!errorSafety) {
-        throw GetHttpException(e.toString());
-      }
-      return Future.value(Response<T>(
-        statusText: 'Can not connect to server. Reason: $e',
-      ));
-    }
   }
 
   Future<Response<T>> patch<T>(
@@ -367,7 +322,6 @@ class GetHttpClient {
     Map<String, String>? headers,
     Map<String, dynamic>? query,
     Decoder<T>? decoder,
-    ResponseInterceptor<T>? responseInterceptor,
     Progress? uploadProgress,
     // List<MultipartFile> files,
   }) async {
@@ -380,7 +334,6 @@ class GetHttpClient {
           body: body,
           query: query,
           decoder: decoder,
-          responseInterceptor: responseInterceptor,
           uploadProgress: uploadProgress,
         ),
         headers: headers,
@@ -403,7 +356,6 @@ class GetHttpClient {
     Map<String, String>? headers,
     Map<String, dynamic>? query,
     Decoder<T>? decoder,
-    ResponseInterceptor<T>? responseInterceptor,
     Progress? uploadProgress,
     // List<MultipartFile> files,
   }) async {
@@ -416,7 +368,6 @@ class GetHttpClient {
           body: body,
           query: query,
           decoder: decoder,
-          responseInterceptor: responseInterceptor,
           uploadProgress: uploadProgress,
         ),
         headers: headers,
@@ -440,7 +391,6 @@ class GetHttpClient {
     Map<String, String>? headers,
     Map<String, dynamic>? query,
     Decoder<T>? decoder,
-    ResponseInterceptor<T>? responseInterceptor,
     Progress? uploadProgress,
   }) async {
     try {
@@ -452,7 +402,6 @@ class GetHttpClient {
           query: query,
           body: body,
           decoder: decoder,
-          responseInterceptor: responseInterceptor,
           uploadProgress: uploadProgress,
         ),
         headers: headers,
@@ -475,7 +424,6 @@ class GetHttpClient {
     Map<String, String>? headers,
     Map<String, dynamic>? query,
     Decoder<T>? decoder,
-    ResponseInterceptor<T>? responseInterceptor,
     Progress? uploadProgress,
   }) async {
     try {
@@ -487,7 +435,6 @@ class GetHttpClient {
           query: query,
           body: body,
           decoder: decoder,
-          responseInterceptor: responseInterceptor,
           uploadProgress: uploadProgress,
         ),
         headers: headers,
@@ -509,11 +456,10 @@ class GetHttpClient {
     String? contentType,
     Map<String, dynamic>? query,
     Decoder<T>? decoder,
-    ResponseInterceptor<T>? responseInterceptor,
   }) async {
     try {
       var response = await _performRequest<T>(
-        () => _get<T>(url, contentType, query, decoder, responseInterceptor),
+        () => _get<T>(url, contentType, query, decoder),
         headers: headers,
       );
       return response;
@@ -527,16 +473,77 @@ class GetHttpClient {
     }
   }
 
-  Future<Response<T>> delete<T>(String url,
-      {Map<String, String>? headers,
-      String? contentType,
-      Map<String, dynamic>? query,
-      Decoder<T>? decoder,
-      ResponseInterceptor<T>? responseInterceptor}) async {
+  // Future<Response<T>> download<T>(
+  //   String url,
+  //   String path, {
+  //   Map<String, String> headers,
+  //   String contentType = 'application/octet-stream',
+  //   Map<String, dynamic> query,
+  // }) async {
+  //   try {
+  //     var response = await _performRequest<T>(
+  //       () => _get<T>(url, contentType, query, null),
+  //       headers: headers,
+  //     );
+  //     response.bodyBytes.listen((value) {});
+  //     return response;
+  //   } on Exception catch (e) {
+  //     if (!errorSafety) {
+  //       throw GetHttpException(e.toString());
+  //     }
+  //     return Future.value(Response<T>(
+  //       statusText: 'Can not connect to server. Reason: $e',
+  //     ));
+  //   }
+
+  //   int byteCount = 0;
+  //   int totalBytes = httpResponse.contentLength;
+
+  //   Directory appDocDir = await getApplicationDocumentsDirectory();
+  //   String appDocPath = appDocDir.path;
+
+  //   File file = File(path);
+
+  //   var raf = file.openSync(mode: FileMode.write);
+
+  //   Completer completer = Completer<String>();
+
+  //   httpResponse.listen(
+  //     (data) {
+  //       byteCount += data.length;
+
+  //       raf.writeFromSync(data);
+
+  //       if (onDownloadProgress != null) {
+  //         onDownloadProgress(byteCount, totalBytes);
+  //       }
+  //     },
+  //     onDone: () {
+  //       raf.closeSync();
+
+  //       completer.complete(file.path);
+  //     },
+  //     onError: (e) {
+  //       raf.closeSync();
+  //       file.deleteSync();
+  //       completer.completeError(e);
+  //     },
+  //     cancelOnError: true,
+  //   );
+
+  //   return completer.future;
+  // }
+
+  Future<Response<T>> delete<T>(
+    String url, {
+    Map<String, String>? headers,
+    String? contentType,
+    Map<String, dynamic>? query,
+    Decoder<T>? decoder,
+  }) async {
     try {
       var response = await _performRequest<T>(
-        () async =>
-            _delete<T>(url, contentType, query, decoder, responseInterceptor),
+        () async => _delete<T>(url, contentType, query, decoder),
         headers: headers,
       );
       return response;

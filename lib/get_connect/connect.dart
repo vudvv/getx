@@ -12,7 +12,7 @@ export 'http/src/multipart/multipart_file.dart';
 export 'http/src/response/response.dart';
 export 'sockets/sockets.dart';
 
-abstract class GetConnectInterface with GetLifeCycleMixin {
+abstract class GetConnectInterface with GetLifeCycleBase {
   List<GetSocket>? sockets;
   GetHttpClient get httpClient;
 
@@ -100,7 +100,9 @@ class GetConnect extends GetConnectInterface {
     this.maxAuthRetries = 1,
     this.allowAutoSignedCert = false,
     this.withCredentials = false,
-  });
+  }) {
+    $configureLifeCycle();
+  }
 
   bool allowAutoSignedCert;
   String userAgent;
@@ -278,7 +280,7 @@ class GetConnect extends GetConnectInterface {
     return baseUrl == null ? url : baseUrl! + url;
   }
 
-  /// query allow made GraphQL raw queries
+  /// query allow made GraphQL raw querys
   /// final connect = GetConnect();
   /// connect.baseUrl = 'https://countries.trevorblades.com/';
   /// final response = await connect.query(
@@ -316,20 +318,17 @@ class GetConnect extends GetConnectInterface {
         return GraphQLResponse<T>(
             graphQLErrors: listError
                 .map((e) => GraphQLError(
-                      code: (e['extensions'] != null
-                              ? e['extensions']['code'] ?? ''
-                              : '')
-                          .toString(),
-                      message: (e['message'] ?? '').toString(),
+                      code: e['extensions']['code']?.toString(),
+                      message: e['message']?.toString(),
                     ))
                 .toList());
       }
       return GraphQLResponse<T>.fromResponse(res);
-    } on Exception catch (err) {
+    } on Exception catch (_) {
       return GraphQLResponse<T>(graphQLErrors: [
         GraphQLError(
           code: null,
-          message: err.toString(),
+          message: _.toString(),
         )
       ]);
     }
@@ -360,11 +359,11 @@ class GetConnect extends GetConnectInterface {
                 .toList());
       }
       return GraphQLResponse<T>.fromResponse(res);
-    } on Exception catch (err) {
+    } on Exception catch (_) {
       return GraphQLResponse<T>(graphQLErrors: [
         GraphQLError(
           code: null,
-          message: err.toString(),
+          message: _.toString(),
         )
       ]);
     }
